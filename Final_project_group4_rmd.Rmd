@@ -1,0 +1,228 @@
+---
+title: "rProject"
+output: html_document
+date: "2022-12-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tibble)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(lubridate)
+library(ggplot2)
+library(forecast)
+
+library(tidyverse)
+library(gridExtra)
+library(seasonal)
+library(fpp2)
+library(rio)
+library(urca)
+library(MASS)
+library(cowplot)
+# tsibble: tidy temporal data frames and tools
+library(tsibble)
+library(xts)
+
+# fable (forecast table)
+library(fable)
+
+# fabletools - provides tools for building modelling packages, with a focus on time series forecasting
+library(fabletools)
+
+# Feature Extraction and Statistics for Time Series in tsibble format
+library(feasts)
+
+# tsibbledata: used datasets for example global_economy
+library(tsibbledata)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+data <- read.csv("states_covid19.csv")
+data
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+data <- transform(data, date = as.Date(as.character(date), "%Y%m%d"))
+data
+```
+
+
+```{r pressure, echo=FALSE}
+data = unique(data[, c('date','state', 'positive')])
+```
+
+
+```{r pressure, echo=FALSE}
+```
+
+
+```{r pressure, echo=FALSE}
+data_complete <- na.omit(data)
+data_complete
+```
+```{r}
+#aggregate(data_complete["date"], by=data["state"], sum)
+data_complete %>%
+  arrange(date)%>%
+	group_by(state = 'CA', date)%>%
+  #mutate(new_cases_n = positive - lag(positive,default = 0))%>%
+  subset(state ='CA',date >="2020-03-09")%>%
+  #ungroup()
+	summarise(new_cases = sum(positive))->CA
+CA
+#CA <- CA %>% 
+  #subset(new_cases >= 18)
+
+```
+
+
+```{r}
+CA %>%
+  arrange(date)%>%
+  mutate(new_cases_n = new_cases - lag(new_cases,default = 0))%>%
+  #subset(state ='CA',date >="2020-03-09")%>%
+  ungroup()->CA
+#CA
+#CA %>% mutate(date=yearmonth(date)) %>% as_tsibble(index= date, key = new_cases_n)->CA
+CA
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r pressure, echo=FALSE}
+CA_ts <- ts(data = CA$new_cases_n,
+   start = min(CA$date),frequency = 30) #monthly seasonality 
+#visualise object CA_ts
+CA_ts %>% autoplot()
+#CA_new <- xts(CA$new_cases_n, order.by=CA$date)
+#CA_new
+
+```
+
+
+
+```{r pressure, echo=FALSE}
+library(scales)
+autoplot(CA_ts) + scale_y_continuous(labels = comma)
+```
+
+DECOMPOSITION
+```{r pressure, echo=FALSE}
+CA_dc <- decompose(CA_ts, type = "multiplicative")
+CA_dc %>% autoplot()
+```
+
+```{r}
+autoplot(CA_dc$x - CA_dc$seasonal)
+```
+
+```{r pressure, echo=FALSE}
+#threshold = 0.80
+#CA_train <- CA_ts[c(1:floor(nrow(CA_ts)*threshold)),]
+#CA_test <- CA_ts[c(floor(nrow(CA_ts)*threshold+1):nrow(CA_ts)),]
+test <- tail(CA_ts, 54) #get 54 last days split approx 80: 20 ratio
+train <- head(CA_ts, length(CA_ts) - length(test)) #get the rest data
+```
+```{r}
+train %>% autoplot()
+```
+```{r}
+library(dplyr)
+library(lubridate)
+library(forecast)
+library(TTR)
+library(ggplot2)
+library(tseries)
+library(gridExtra)
+adf.test(train)
+```
+```{r}
+diff(train, lag = 1) %>% adf.test()
+```
+
+
+```{r pressure, echo=FALSE}
+arima_modele <- auto.arima(train)#, trace = T, approximation = FALSE)
+```
+
+```{r}
+
+summary(arima_modele)
+```
+
+```{r}
+arima_modele1 <- auto.arima(test)#, trace = T, approximation = FALSE)
+```
+```{r}
+summary(arima_modele1)
+```
+
+```{r}
+tsdisplay(diff(train))
+```
+```{r}
+fit_ets <- ets(y = train, model = "ZZZ")
+fit_ets
+```
+```{r}
+summary(fit_ets)
+```
+```{r}
+fit_ets1 <- ets(y = test, model = "ZZZ")
+fit_ets1
+```
+```{r}
+summary(fit_ets1)
+```
+
+```{r}
+#futurVal <- forecast.Arima(arime_modele,h=54, level=c(99.5))
+#plot.forecast(futurVal)
+#fc_plastics_autoarima <- forecast(
+ # auto.arima(train), h = 10
+
+covid_ets_forecast <- predict(fit_ets, h =54)
+# Fiting the linear mode
+
+# Predicts the future values
+#g <-predict(arima_modele)
+covid_arima_forecast <- predict(arima_modele, h =54)
+```
+```{r}
+covid_ets_forecast <- forecast(fit_ets, h =54)
+covid_arima_forecast <- forecast(arima_modele, h =54)
+```
+
+```{r}
+ETS <- autoplot(covid_ets_forecast, series = "ETS", fcol = "red") +
+  autolayer(CA_ts, series = "Actual", color = "black") + 
+  labs(subtitle = "New Case of Covid in California,USA from March - December 2020",
+       y = "New Cases") +
+  theme_minimal()
+
+
+
+#autoplot(forecast(covid_arima_forecast, 54))
+
+#autoplot(forecast(arima_modele))
+
+
+
+grid.arrange(ETS)
+```
+```{r}
+#accuracy(fit_ets,test)
+```
+
